@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "n1trader"
+version = "0.1.0"
+description = "ETH Futures backtest & position analysis using nautilus_trader"
+requires-python = ">=3.11"
+dependencies = [
+    "nautilus_trader>=1.200",
+    "pandas>=2.1",
+    "pyarrow>=14",
+    "ccxt>=4.2",
+    "requests>=2.31",
+    "streamlit>=1.30",
+    "plotly>=5.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=4",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["n1trader*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["n1trader"]
+omit = ["tests/*", "n1trader/dashboard/*"]
