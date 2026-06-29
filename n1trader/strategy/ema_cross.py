@@ -16,7 +16,7 @@ from nautilus_trader.trading.strategy import Strategy
 
 from n1trader.data.news_windows import BlackoutWindow
 from n1trader.strategy.blackout import in_news_window, is_weekend_utc
-from n1trader.strategy.signals import Signal, compute_ema
+from n1trader.strategy.signals import Signal
 
 
 class EmaCrossConfig(StrategyConfig, frozen=True):
@@ -54,6 +54,13 @@ class EmaCrossStrategy(Strategy):
         self._initial_sl: float | None = None
         self._entry_side: int = 0
         self._last_atr: float = float("nan")
+        # Incremental full-history EMA state (fixes bounded-deque recompute regression)
+        self._ema_fast: float | None = None
+        self._ema_slow: float | None = None
+        self._prev_ema_fast: float | None = None
+        self._prev_ema_slow: float | None = None
+        self._alpha_fast: float = 2.0 / (config.fast_period + 1)
+        self._alpha_slow: float = 2.0 / (config.slow_period + 1)
         self._instrument_id: InstrumentId = InstrumentId.from_str(
             config.instrument_id_str
         )
@@ -70,9 +77,20 @@ class EmaCrossStrategy(Strategy):
         self.subscribe_bars(BarType.from_str(self.config.bar_type_str))
 
     def on_bar(self, bar: Bar) -> None:
-        self._closes.append(float(bar.close))
+        close_val = float(bar.close)
+        self._closes.append(close_val)
         self._highs.append(float(bar.high))
         self._lows.append(float(bar.low))
+
+        # Update incremental EMA on every bar so state stays current even during positions
+        self._prev_ema_fast = self._ema_fast
+        self._prev_ema_slow = self._ema_slow
+        if self._ema_fast is None:
+            self._ema_fast = close_val
+            self._ema_slow = close_val
+        else:
+            self._ema_fast = self._alpha_fast * close_val + (1.0 - self._alpha_fast) * self._ema_fast
+            self._ema_slow = self._alpha_slow * close_val + (1.0 - self._alpha_slow) * self._ema_slow
 
         bar_ts = pd.Timestamp(bar.ts_event, unit="ns", tz="UTC").to_pydatetime()
 
@@ -98,17 +116,16 @@ class EmaCrossStrategy(Strategy):
 
         self._last_atr = self._atr(high_ser, low_ser, close_ser, self.config.atr_period)
 
-        ema_fast = compute_ema(close_ser, self.config.fast_period)
-        ema_slow = compute_ema(close_ser, self.config.slow_period)
+        if self._prev_ema_fast is None or self._prev_ema_slow is None:
+            return
 
-        last = len(close_ser) - 1
         cross_long = (
-            ema_fast.iloc[last] > ema_slow.iloc[last]
-            and ema_fast.iloc[last - 1] <= ema_slow.iloc[last - 1]
+            self._ema_fast > self._ema_slow
+            and self._prev_ema_fast <= self._prev_ema_slow
         )
         cross_short = (
-            ema_fast.iloc[last] < ema_slow.iloc[last]
-            and ema_fast.iloc[last - 1] >= ema_slow.iloc[last - 1]
+            self._ema_fast < self._ema_slow
+            and self._prev_ema_fast >= self._prev_ema_slow
         )
 
         if cross_long:
