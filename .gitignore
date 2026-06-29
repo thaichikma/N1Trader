@@ -7,9 +7,9 @@ __pycache__/
 dist/
 build/
 
-# Data & reports (never commit)
-data/
-reports/
+# Data & reports at project root (never commit)
+/data/
+/reports/
 
 # Env
 .env
