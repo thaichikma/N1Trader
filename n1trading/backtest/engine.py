@@ -169,6 +169,118 @@ def run_backtest(
     )
 
 
+def run_backtest_mtf(
+    df_15m: pd.DataFrame,
+    df_1m: pd.DataFrame,
+    config: EmaCrossConfig,
+    starting_balance: float = 10_000.0,
+    taker_fee: float = 0.0004,
+) -> BacktestResult:
+    """Multi-timeframe backtest: signal on 15m, execution + SL/TP on 1m.
+
+    Signal fires when 15m bar closes; entry at open of the corresponding 1m bar
+    that starts at next 15m bar's open_time. SL/TP monitored bar-by-bar on 1m.
+    """
+    # Build a lookup: 1m open_time → row index for fast alignment
+    df_1m = df_1m.reset_index(drop=True)
+    time_to_1m = {t: i for i, t in enumerate(df_1m["open_time"])}
+
+    balance = starting_balance
+    equity: list[float] = []
+    trades: list[Trade] = []
+    open_trade: Trade | None = None
+
+    # Track which 1m bar index we last processed
+    last_1m_idx = 0
+    # Signal from bar k fires at CLOSE of bar k → enter at OPEN of bar k+1
+    pending_signal = 0
+    pending_atr = float("nan")
+
+    rows_15m = df_15m.reset_index(drop=True)
+
+    for k in range(len(rows_15m)):
+        bar_15m = rows_15m.iloc[k]
+
+        # The next 15m bar's open_time = first 1m bar to process
+        if k + 1 < len(rows_15m):
+            next_15m_open = rows_15m.iloc[k + 1]["open_time"]
+        else:
+            next_15m_open = None
+
+        # Find 1m index range: 1m bars that fall inside 15m bar k
+        end_1m_idx = time_to_1m.get(next_15m_open, len(df_1m)) if next_15m_open is not None else len(df_1m)
+
+        for i in range(last_1m_idx, end_1m_idx):
+            row_1m = df_1m.iloc[i]
+            bar_open = float(row_1m["open"])
+            bar_high = float(row_1m["high"])
+            bar_low = float(row_1m["low"])
+            bar_time = row_1m["open_time"]
+
+            # Check SL/TP on open trade
+            if open_trade is not None:
+                exit_price, exit_reason = _check_exit(open_trade, bar_high, bar_low)
+                if exit_price is not None:
+                    pnl = _calc_pnl(open_trade, exit_price, taker_fee)
+                    balance += pnl
+                    open_trade.exit_bar = i
+                    open_trade.exit_time = bar_time
+                    open_trade.exit_price = exit_price
+                    open_trade.exit_reason = exit_reason
+                    open_trade.pnl = pnl
+                    trades.append(open_trade)
+                    open_trade = None
+
+            equity.append(balance)
+
+            # Entry: pending_signal from previous 15m bar → enter at FIRST 1m bar here
+            if i == last_1m_idx and pending_signal != 0 and open_trade is None:
+                if not (math.isnan(pending_atr) or pending_atr <= 0):
+                    qty = _calc_qty(balance, config, bar_open)
+                    if qty > 0:
+                        balance -= bar_open * qty * taker_fee
+                        if pending_signal == 1:
+                            open_trade = Trade(
+                                entry_bar=i, entry_time=bar_time, entry_price=bar_open,
+                                side="LONG", qty=qty,
+                                sl_price=bar_open - config.sl_atr_mult * pending_atr,
+                                tp_price=bar_open + config.tp_atr_mult * pending_atr,
+                            )
+                        else:
+                            open_trade = Trade(
+                                entry_bar=i, entry_time=bar_time, entry_price=bar_open,
+                                side="SHORT", qty=qty,
+                                sl_price=bar_open + config.sl_atr_mult * pending_atr,
+                                tp_price=bar_open - config.tp_atr_mult * pending_atr,
+                            )
+
+        # Signal fires at CLOSE of this 15m bar → becomes pending for next period
+        pending_signal = int(bar_15m["signal"])
+        pending_atr = float(bar_15m["atr"])
+        last_1m_idx = end_1m_idx
+
+    # Force-close at last 1m bar
+    if open_trade is not None:
+        last = df_1m.iloc[-1]
+        exit_price = float(last["close"])
+        pnl = _calc_pnl(open_trade, exit_price, taker_fee)
+        balance += pnl
+        open_trade.exit_bar = len(df_1m) - 1
+        open_trade.exit_time = last["open_time"]
+        open_trade.exit_price = exit_price
+        open_trade.exit_reason = "END"
+        open_trade.pnl = pnl
+        trades.append(open_trade)
+
+    equity_curve = pd.Series(equity, index=df_1m["open_time"].iloc[:len(equity)], name="equity")
+    return BacktestResult(
+        trades=trades,
+        equity_curve=equity_curve,
+        starting_balance=starting_balance,
+        final_balance=balance,
+    )
+
+
 def _check_exit(
     trade: Trade, bar_high: float, bar_low: float
 ) -> tuple[float | None, str | None]:
