@@ -46,9 +46,16 @@ def main() -> None:
     print(f"  {len(df_1m):,} bars")
 
     print("Step 3: Computing 15m signals …")
+    df_15m_raw = generate_signals(df_15m.copy(), CONFIG.__class__(
+        fast_period=CONFIG.fast_period, slow_period=CONFIG.slow_period,
+        atr_period=CONFIG.atr_period, adx_threshold=0.0, atr_min_pct=0.0,
+    ))
     df_15m = generate_signals(df_15m, CONFIG)
+    n_raw = (df_15m_raw["signal"] != 0).sum()
     n_sig = (df_15m["signal"] != 0).sum()
-    print(f"  Signals: {n_sig}  ({(df_15m['signal']==1).sum()} LONG / {(df_15m['signal']==-1).sum()} SHORT)")
+    print(f"  Raw crosses  : {n_raw}")
+    print(f"  After filters: {n_sig}  ({(df_15m['signal']==1).sum()} LONG / {(df_15m['signal']==-1).sum()} SHORT)")
+    print(f"  Filtered out : {n_raw - n_sig}  ({(n_raw-n_sig)/n_raw*100:.0f}%)")
 
     print("Step 4: Running MTF backtest …")
     result = run_backtest_mtf(df_15m, df_1m, CONFIG, starting_balance=args.balance)
