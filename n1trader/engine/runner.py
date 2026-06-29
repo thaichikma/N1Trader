@@ -9,6 +9,7 @@ import pandas as pd
 
 from nautilus_trader.backtest.engine import BacktestEngine, BacktestEngineConfig
 from nautilus_trader.backtest.models import MakerTakerFeeModel
+from nautilus_trader.config import LoggingConfig
 from nautilus_trader.model.currencies import USDT
 from nautilus_trader.model.data import Bar
 from nautilus_trader.model.enums import AccountType, OmsType
@@ -33,10 +34,14 @@ def run_backtest(
     maker_fee: Decimal = Decimal("0.0002"),
     taker_fee: Decimal = Decimal("0.0004"),
     trader_id: str = "BACKTEST-001",
+    log_level: str = "ERROR",
 ) -> BacktestResult:
     """Run a single backtest and return fill/position/account reports."""
     engine = BacktestEngine(
-        config=BacktestEngineConfig(trader_id=trader_id)
+        config=BacktestEngineConfig(
+            trader_id=trader_id,
+            logging=LoggingConfig(log_level=log_level),
+        )
     )
     instrument = make_eth_perp_instrument(maker_fee=maker_fee, taker_fee=taker_fee)
     engine.add_venue(

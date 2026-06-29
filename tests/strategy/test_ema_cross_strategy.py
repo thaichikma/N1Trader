@@ -30,14 +30,15 @@ def _weekend_bars(n: int = 60) -> list:
 
 
 def _weekday_bars(n: int = 200) -> list:
-    """Return bars starting on Monday — enough for EMA warm-up."""
+    """Return bars starting on Monday with a flat→rally pattern (forces EMA cross)."""
     from n1trader.data.catalog import load_to_catalog, query_bars
     import tempfile
 
     t0 = pd.Timestamp("2025-01-06 00:00:00", tz="UTC")  # Monday
     times = pd.date_range(t0, periods=n, freq="60s")
-    # Trending up to generate LONG signals
-    close = [3000.0 + i * 2 for i in range(n)]
+    flat = [3000.0] * (n // 2)
+    rising = [3000.0 + (i + 1) * 20 for i in range(n - n // 2)]
+    close = flat + rising
     df = pd.DataFrame({
         "open_time": times,
         "open":  [c - 1 for c in close],

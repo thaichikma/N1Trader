@@ -37,21 +37,27 @@ def _simple_run_fn(bars_df: pd.DataFrame, params: ParamSet) -> pd.Series:
 @pytest.mark.slow
 def test_walk_forward_returns_dataframe():
     bars = _make_trending_bars(600)
-    result = run_walk_forward(bars, _simple_run_fn, train_bars=200, test_bars=100)
+    result = run_walk_forward(
+        bars, _simple_run_fn, train_bars=200, test_bars=100, max_workers=1
+    )
     assert isinstance(result, pd.DataFrame)
 
 
 @pytest.mark.slow
 def test_walk_forward_has_window_column():
     bars = _make_trending_bars(600)
-    result = run_walk_forward(bars, _simple_run_fn, train_bars=200, test_bars=100)
+    result = run_walk_forward(
+        bars, _simple_run_fn, train_bars=200, test_bars=100, max_workers=1
+    )
     assert "window" in result.columns
 
 
 @pytest.mark.slow
 def test_walk_forward_has_oos_score():
     bars = _make_trending_bars(600)
-    result = run_walk_forward(bars, _simple_run_fn, train_bars=200, test_bars=100)
+    result = run_walk_forward(
+        bars, _simple_run_fn, train_bars=200, test_bars=100, max_workers=1
+    )
     assert "oos_score" in result.columns
 
 
@@ -59,7 +65,9 @@ def test_walk_forward_has_oos_score():
 def test_best_param_selected_from_train_only():
     """best_param must be chosen before OOS data is seen."""
     bars = _make_trending_bars(600)
-    result = run_walk_forward(bars, _simple_run_fn, train_bars=200, test_bars=100)
+    result = run_walk_forward(
+        bars, _simple_run_fn, train_bars=200, test_bars=100, max_workers=1
+    )
     assert "best_param" in result.columns
     assert result["best_param"].notna().all()
 
@@ -67,7 +75,9 @@ def test_best_param_selected_from_train_only():
 @pytest.mark.slow
 def test_no_oos_overlap():
     bars = _make_trending_bars(600)
-    result = run_walk_forward(bars, _simple_run_fn, train_bars=200, test_bars=100)
+    result = run_walk_forward(
+        bars, _simple_run_fn, train_bars=200, test_bars=100, max_workers=1
+    )
     if "oos_start" in result.columns and "oos_end" in result.columns:
         starts = result["oos_start"].sort_values().values
         ends = result["oos_end"].sort_values().values

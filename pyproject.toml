@@ -34,6 +34,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+markers = [
+    "slow: long-running backtest or walk-forward tests",
+]
 
 [tool.coverage.run]
 source = ["n1trader"]

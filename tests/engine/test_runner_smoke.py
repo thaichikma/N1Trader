@@ -14,7 +14,9 @@ from n1trader.strategy.ema_cross import EmaCrossConfig, EmaCrossStrategy
 def _make_trending_bars(n: int = 300) -> list:
     t0 = pd.Timestamp("2025-01-06 00:00:00", tz="UTC")  # Monday
     times = pd.date_range(t0, periods=n, freq="60s")
-    close = [3000.0 + i * 1.5 for i in range(n)]
+    flat = [3000.0] * (n // 2)
+    rising = [3000.0 + (i + 1) * 15 for i in range(n - n // 2)]
+    close = flat + rising
     df = pd.DataFrame({
         "open_time": times,
         "open":  [c - 1 for c in close],
@@ -32,8 +34,8 @@ def _make_trending_bars(n: int = 300) -> list:
 def backtest_result():
     bars = _make_trending_bars(300)
     config = EmaCrossConfig(
-        instrument_id_str="ETH-PERP.BINANCE",
-        bar_type_str="ETH-PERP.BINANCE-1-MINUTE-LAST-EXTERNAL",
+        instrument_id_str="ETHUSDT-PERP.BINANCE",
+        bar_type_str="ETHUSDT-PERP.BINANCE-1-MINUTE-LAST-EXTERNAL",
         fast_period=5,
         slow_period=20,
     )

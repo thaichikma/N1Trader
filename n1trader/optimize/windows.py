@@ -13,6 +13,14 @@ class WFWindow:
     test_start: pd.Timestamp
     test_end: pd.Timestamp
 
+    @property
+    def oos_start(self) -> pd.Timestamp:
+        return self.test_start
+
+    @property
+    def oos_end(self) -> pd.Timestamp:
+        return self.test_end
+
 
 def make_windows(
     start: pd.Timestamp,
@@ -22,22 +30,21 @@ def make_windows(
     bar_freq: str = "1min",
     anchored: bool = False,
 ) -> list[WFWindow]:
-    """Generate non-overlapping train/test windows.
-
-    anchored=False → rolling (train window slides forward).
-    anchored=True  → expanding (train always starts at `start`).
-
-    Train and test windows never overlap.
-    OOS test windows cover the full period after the initial train window.
-    """
+    """Generate non-overlapping train/test windows."""
     freq = pd.tseries.frequencies.to_offset(bar_freq)
-    step = freq * test_bars  # roll forward by test_bars each iteration
+    step = freq * test_bars
 
     windows: list[WFWindow] = []
     train_start = start
+    anchored_extra = 0
 
     while True:
-        train_end = train_start + freq * (train_bars - 1)
+        if anchored:
+            train_start = start
+            train_end = start + freq * (train_bars - 1 + anchored_extra)
+        else:
+            train_end = train_start + freq * (train_bars - 1)
+
         test_start = train_end + freq
         test_end = test_start + freq * (test_bars - 1)
 
@@ -52,8 +59,7 @@ def make_windows(
         ))
 
         if anchored:
-            # Expand train window: keep start fixed, move test forward
-            train_start = start
+            anchored_extra += test_bars
         else:
             train_start = train_start + step
 
@@ -62,10 +68,17 @@ def make_windows(
 
 def slice_bars(
     bars_df: pd.DataFrame,
-    start: pd.Timestamp,
-    end: pd.Timestamp,
+    start: pd.Timestamp | WFWindow,
+    end: pd.Timestamp | None = None,
     time_col: str = "open_time",
-) -> pd.DataFrame:
-    """Return rows of bars_df with time_col in [start, end]."""
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    """Slice bars by [start, end] or by a WFWindow (train + test)."""
+    if isinstance(start, WFWindow):
+        window = start
+        train = slice_bars(bars_df, window.train_start, window.train_end, time_col)
+        test = slice_bars(bars_df, window.test_start, window.test_end, time_col)
+        return train, test
+
+    assert end is not None
     ts = pd.to_datetime(bars_df[time_col], utc=True)
     return bars_df.loc[(ts >= start) & (ts <= end)].reset_index(drop=True)

@@ -47,7 +47,7 @@ def test_train_end_before_oos_start():
     windows = make_windows(bars["open_time"].iloc[0], bars["open_time"].iloc[-1],
                            train_bars=300, test_bars=100)
     for w in windows:
-        assert w.train_end <= w.oos_start
+        assert w.train_end < w.oos_start
 
 
 def test_slice_bars_returns_correct_subset():
